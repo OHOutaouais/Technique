@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Technique">
+<title>Technique In/Out</title>
+<style>
+/* Compatible iOS 12 (iPad Air 1) : pas de clamp, pas de gap flex, pas de color-mix, JS ES5 */
+:root{--bg:#0f1418;--panel:#182027;--ink:#f2f5f7;--mute:#8b98a3;--in:#16a34a;--in2:#22c55e;--out:#b91c1c;--out2:#dc2626}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden}
+body{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;padding:12px 14px 14px}
+header{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;height:58px;padding:0 4px 10px}
+h1{margin:0;font-size:2rem;font-weight:800;letter-spacing:.5px}
+.count{margin-left:18px;font-size:1.25rem;color:var(--mute)}
+.count b{color:var(--in2)}
+.sp{-webkit-flex:1;flex:1}
+.clock{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;margin-right:14px}
+.gear{background:transparent;border:1px solid #33414c;color:var(--mute);border-radius:10px;font-size:1.3rem;width:46px;height:42px}
+.warn{display:none;background:#7c2d12;color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:1rem}
+.warn.show{display:block}
+#grid{-webkit-flex:1;flex:1;display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:1fr;grid-gap:10px;min-height:0}
+.t{border:0;border-radius:16px;color:#fff;padding:8px 6px;display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;-webkit-justify-content:center;justify-content:center;-webkit-align-items:center;align-items:center;text-align:center;font-family:inherit;touch-action:manipulation;-webkit-transition:-webkit-transform .08s;transition:transform .08s}
+.t:active{-webkit-transform:scale(.96);transform:scale(.96)}
+.t.out{background:var(--out);background:-webkit-linear-gradient(top,var(--out2),var(--out));background:linear-gradient(180deg,var(--out2),var(--out))}
+.t.in{background:var(--in);background:-webkit-linear-gradient(top,var(--in2),var(--in));background:linear-gradient(180deg,var(--in2),var(--in));box-shadow:0 0 0 3px rgba(34,197,94,.35)}
+.t .n{font-size:1.7rem;font-weight:800;line-height:1.1}
+.t .s{margin-top:6px;font-size:1.05rem;font-weight:700;letter-spacing:1px;opacity:.95}
+.t .h{font-size:.95rem;opacity:.85;margin-top:2px}
+/* config */
+#cfg{display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.7);padding:30px}
+#cfg.show{display:block}
+.box{background:var(--panel);border-radius:16px;max-width:620px;margin:0 auto;padding:22px}
+.box h2{margin:0 0 8px}
+.box p{color:var(--mute);margin:0 0 12px}
+textarea{width:100%;height:320px;font-size:1.1rem;border-radius:10px;border:1px solid #33414c;background:#0f1418;color:var(--ink);padding:10px;-webkit-user-select:text;user-select:text}
+.row{margin-top:12px;text-align:right}
+.btn{font-size:1.1rem;border-radius:10px;border:0;padding:12px 18px;margin-left:8px;font-weight:700}
+.btn.ok{background:var(--in);color:#fff}
+.btn.no{background:#33414c;color:var(--ink)}
+.btn.rst{background:var(--out);color:#fff;float:left;margin-left:0}
+@media (max-width:820px){#grid{grid-template-columns:repeat(3,1fr)}.t .n{font-size:1.35rem}body{overflow:auto}#grid{grid-auto-rows:110px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Technique</h1>
+  <div class="count" id="count"></div>
+  <div class="sp"></div>
+  <div class="clock" id="clock"></div>
+  <button class="gear" id="gear" aria-label="Modifier les noms">⚙</button>
+</header>
+<div class="warn" id="warn"></div>
+<div id="grid"></div>
+
+<div id="cfg"><div class="box">
+  <h2>Noms de l'équipe</h2>
+  <p>Un nom par ligne. Pour deux personnes avec le même prénom, ajoutez une initiale (ex. « Jean-François B. »).</p>
+  <textarea id="names"></textarea>
+  <div class="row">
+    <button class="btn rst" id="reset">Tout mettre en Out</button>
+    <button class="btn no" id="cancel">Annuler</button>
+    <button class="btn ok" id="save">Enregistrer</button>
+  </div>
+</div></div>
+
+<script>
+(function(){
+var FB_URL='https://selection-horaire-default-rtdb.firebaseio.com/';
+var ROOT='technique';
+var DEFAULT_NAMES=['Abderafik','Andréane','Anne','Anne-Marie','Antoine','Éloïse','Gilbert','Glody','Hocine','Houda',
+ 'Jean-François B.','Jean-François L.','Joanie','Kassandra','Léa','Marie-Pier','Nadia','Narimene','Sébastien','Zied'];
+
+function $(id){return document.getElementById(id)}
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+// code d'équipe : ?code=... la première fois, ensuite mémorisé
+(function(){var m=/[?&]code=([^&#]+)/.exec(location.search);if(m)ls('tech-code',decodeURIComponent(m[1]));})();
+function code(){return ls('tech-code')||''}
+function key(n){return n.toLowerCase().normalize?n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-'):n.toLowerCase().replace(/[^a-z0-9]+/g,'-')}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function hm(t){var d=new Date(t),m=d.getMinutes();return d.getHours()+' h '+(m<10?'0':'')+m}
+
+var S={names:DEFAULT_NAMES.slice(),p:{},err:null,lastTap:{},pending:{}};
+try{var c=JSON.parse(ls('tech-cache')||'null');if(c){if(c.names)S.names=c.names;if(c.p)S.p=c.p}}catch(e){}
+
+function req(method,path,body,cb){
+  if(!code()){cb&&cb('nocode');return}
+  var x=new XMLHttpRequest();
+  x.open(method,FB_URL+'e/'+encodeURIComponent(code())+'/'+ROOT+(path?'/'+path:'')+'.json');
+  x.timeout=10000;
+  x.onload=function(){if(x.status>=200&&x.status<300)cb&&cb(null,x.responseText);else cb&&cb(x.status)};
+  x.onerror=x.ontimeout=function(){cb&&cb('net')};
+  x.setRequestHeader('Content-Type','application/json');
+  x.send(body===null?null:JSON.stringify(body));
+}
+
+function render(){
+  var h='',nIn=0;
+  for(var i=0;i<S.names.length;i++){
+    var n=S.names[i],k=key(n),st=S.p[k],on=!!(st&&st['in']);
+    if(on)nIn++;
+    h+='<button class="t '+(on?'in':'out')+'" data-k="'+k+'">'+
+       '<span class="n">'+esc(n)+'</span>'+
+       '<span class="s">'+(on?'IN':'OUT')+'</span>'+
+       (st&&st.t?'<span class="h">'+(on?'arrivé·e ':'parti·e ')+hm(st.t)+'</span>':'')+
+       '</button>';
+  }
+  $('grid').innerHTML=h;
+  $('count').innerHTML='<b>'+nIn+'</b> / '+S.names.length+' présents';
+  var w=$('warn');
+  if(!code()){w.className='warn show';w.innerHTML='Code d\'équipe manquant sur cet appareil : ouvrez une fois le lien avec <b>?code=…</b>. En attendant, les changements restent sur cet appareil seulement.'}
+  else if(S.err===401||S.err===403){w.className='warn show';w.innerHTML='Code d\'équipe invalide sur cet appareil.'}
+  else if(S.err){w.className='warn show';w.innerHTML='Pas de connexion : les autres écrans ne voient peut-être pas les derniers changements.'}
+  else w.className='warn';
+  ls('tech-cache',JSON.stringify({names:S.names,p:S.p}));
+}
+
+function load(){
+  req('GET','',null,function(err,t){
+    if(err&&err!=='nocode'){S.err=err;render();return}
+    if(!err){
+      S.err=null;
+      try{
+        var all=JSON.parse(t)||{};
+        if(all.noms&&all.noms.length)S.names=all.noms;
+        var p=all.presence||{};
+        // garder les changements locaux pas encore confirmés
+        for(var k in S.pending)if(S.pending.hasOwnProperty(k))p[k]=S.pending[k];
+        S.p=p;
+      }catch(e){}
+    }
+    render();
+  });
+}
+
+$('grid').addEventListener('click',function(e){
+  var b=e.target;while(b&&b!==this&&!b.getAttribute('data-k'))b=b.parentNode;
+  if(!b||b===this)return;
+  var k=b.getAttribute('data-k'),now=Date.now();
+  if(S.lastTap[k]&&now-S.lastTap[k]<1200)return; // anti double-tape
+  S.lastTap[k]=now;
+  var cur=S.p[k],v={'in':!(cur&&cur['in']),t:now};
+  S.p[k]=v;S.pending[k]=v;render();
+  req('PUT','presence/'+k,v,function(err){
+    if(S.pending[k]===v)delete S.pending[k];
+    if(err&&err!=='nocode'){S.err=err;render()}
+  });
+});
+
+// configuration des noms
+$('gear').onclick=function(){$('names').value=S.names.join('\n');$('cfg').className='show'};
+$('cancel').onclick=function(){$('cfg').className=''};
+$('save').onclick=function(){
+  var l=$('names').value.split('\n'),out=[],seen={};
+  for(var i=0;i<l.length;i++){var n=l[i].replace(/^\s+|\s+$/g,'');if(n&&!seen[key(n)]){seen[key(n)]=1;out.push(n)}}
+  if(!out.length)return;
+  S.names=out;$('cfg').className='';render();
+  req('PUT','noms',out,function(err){if(err&&err!=='nocode'){S.err=err;render()}});
+};
+$('reset').onclick=function(){
+  if(!confirm('Mettre tout le monde en Out ?'))return;
+  var now=Date.now(),p={};
+  for(var i=0;i<S.names.length;i++)p[key(S.names[i])]={'in':false,t:now};
+  S.p=p;S.pending={};$('cfg').className='';render();
+  req('PUT','presence',p,function(err){if(err&&err!=='nocode'){S.err=err;render()}});
+};
+
+function tick(){var d=new Date(),m=d.getMinutes();$('clock').innerHTML=d.getHours()+':'+(m<10?'0':'')+m}
+tick();setInterval(tick,10000);
+render();load();setInterval(load,5000);
+// recharger chaque nuit vers 3 h pour prendre la dernière version
+var day=new Date().getDate();
+setInterval(function(){var d=new Date();if(d.getDate()!==day&&d.getHours()>=3){try{location.reload()}catch(e){}}},600000);
+})();
+</script>
+</body>
+</html>
